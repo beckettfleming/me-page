@@ -6,6 +6,7 @@ const DB_PATH = path.join(__dirname, 'data', 'db.json');
 
 function load() {
   if (!fs.existsSync(DB_PATH)) {
+    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
     const initial = { notes: {}, devices: {} };
     fs.writeFileSync(DB_PATH, JSON.stringify(initial, null, 2));
     return initial;
