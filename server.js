@@ -2,6 +2,7 @@ const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
 const crypto = require('crypto');
+const notesStore = require('./cli-notes/store');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,8 +14,9 @@ app.set('trust proxy', true);
 
 app.use(express.json({ limit: '10mb' }));
 
-// IP restriction for admin access
-const ALLOWED_ADMIN_IP = '162.230.12.125';
+// IP restriction for admin access. Override via ADMIN_IP env var so a
+// changed IP doesn't require editing and redeploying this file.
+const ALLOWED_ADMIN_IP = process.env.ADMIN_IP || '162.230.12.125';
 function getClientIp(req) {
   let ip = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'];
   if (!ip) return '';
@@ -35,6 +37,46 @@ app.get('/admin.html', adminOnly, (req, res) => res.sendFile(path.join(__dirname
 // Serve other static assets
 app.use(express.static(path.join(__dirname)));
 app.use('/uploads', express.static(UPLOADS_DIR));
+app.use('/notes', express.static(path.join(__dirname, 'cli-notes', 'public')));
+
+function clientIp(req) {
+  return getClientIp(req);
+}
+
+// Personal note, keyed by device IP unless linked in admin (see /api/notes/link)
+app.get('/api/note', (req, res) => {
+  res.json({ content: notesStore.getNote(clientIp(req)) });
+});
+
+app.post('/api/note', (req, res) => {
+  notesStore.setNote(clientIp(req), req.body.content || '');
+  res.json({ ok: true });
+});
+
+app.get('/api/notes/devices', adminOnly, (req, res) => {
+  res.json({ devices: notesStore.listDevices() });
+});
+
+app.post('/api/notes/link', adminOnly, (req, res) => {
+  const { ipA, ipB } = req.body;
+  if (!ipA || !ipB || ipA === ipB) return res.status(400).json({ error: 'need two distinct ips' });
+  notesStore.linkDevices(ipA, ipB);
+  res.json({ ok: true });
+});
+
+app.post('/api/notes/unlink', adminOnly, (req, res) => {
+  const { ip } = req.body;
+  if (!ip) return res.status(400).json({ error: 'ip required' });
+  notesStore.unlinkDevice(ip);
+  res.json({ ok: true });
+});
+
+app.post('/api/notes/forget', adminOnly, (req, res) => {
+  const { ip } = req.body;
+  if (!ip) return res.status(400).json({ error: 'ip required' });
+  notesStore.forgetDevice(ip);
+  res.json({ ok: true });
+});
 
 const ALLOWED_IMAGE_TYPES = {
   'image/png': '.png',

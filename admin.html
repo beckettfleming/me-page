@@ -66,21 +66,75 @@ textarea{resize:vertical}
 .image-uploading{font-size:11px;color:var(--fg-2);grid-column:1/-1}
 .upload-label{display:inline-block;font-size:12px;padding:8px 14px;border:1px dashed var(--border-2);border-radius:var(--radius-md);color:var(--fg-1);cursor:pointer;text-align:center;width:100%;margin-top:6px}
 .upload-label:hover{border-color:var(--accent-500);color:var(--fg-0)}
+
+.shell{max-width:1100px;margin:0 auto;padding:32px 24px 96px;display:flex;gap:32px;align-items:flex-start}
+.sidebar{width:180px;flex-shrink:0;position:sticky;top:32px}
+.sidebar h1{font-size:16px;font-weight:800;letter-spacing:-0.02em;margin:0 0 16px}
+.sidebar nav{display:flex;flex-direction:column;gap:2px}
+.sidebar button{width:100%;text-align:left;padding:9px 12px;border:1px solid transparent;background:transparent;border-radius:var(--radius-md);color:var(--fg-1);font-size:13px}
+.sidebar button:hover{background:var(--bg-2);border-color:transparent;color:var(--fg-0)}
+.sidebar button.active{background:var(--surface-raised);border-color:var(--border-2);color:var(--fg-0);font-weight:600}
+.main{flex:1;min-width:0}
+.panel{display:none}
+.panel.active{display:block}
+
+.notes-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:16px}
+.notes-table th,.notes-table td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border-1)}
+.notes-table th{color:var(--fg-2);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.notes-table td.mono{font-size:12px;color:var(--fg-1)}
+.link-row{display:flex;gap:8px;align-items:center;margin-top:20px;flex-wrap:wrap}
+.link-row select{width:auto;min-width:160px}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <h1>admin / projects</h1>
-  </header>
-  <div class="sub">unlinked from the site — add, edit, or remove portfolio entries</div>
-
-  <div class="toolbar">
-    <div class="count" id="count"></div>
-    <button class="btn-primary" id="newBtn">+ new project</button>
+<div class="shell">
+  <div class="sidebar">
+    <h1>admin</h1>
+    <nav id="tabNav">
+      <button class="tab-btn active" data-tab="projects">projects</button>
+      <button class="tab-btn" data-tab="notes">cli-notes</button>
+    </nav>
   </div>
 
-  <div id="list" class="grid"></div>
+  <div class="main">
+    <div class="panel active" id="panel-projects">
+      <header>
+        <h1>admin / projects</h1>
+      </header>
+      <div class="sub">unlinked from the site — add, edit, or remove portfolio entries</div>
+
+      <div class="toolbar">
+        <div class="count" id="count"></div>
+        <button class="btn-primary" id="newBtn">+ new project</button>
+      </div>
+
+      <div id="list" class="grid"></div>
+    </div>
+
+    <div class="panel" id="panel-notes">
+      <header>
+        <h1>admin / cli-notes</h1>
+      </header>
+      <div class="sub">
+        each device (ip) gets its own private note by default —
+        link two ips to make them share one note, unlink to split them apart again
+      </div>
+
+      <table class="notes-table">
+        <thead>
+          <tr><th>ip</th><th>note id</th><th>last seen</th><th>preview</th><th></th></tr>
+        </thead>
+        <tbody id="deviceRows"></tbody>
+      </table>
+
+      <div class="link-row">
+        <select id="ipA"></select>
+        <span class="sub" style="margin:0">&harr;</span>
+        <select id="ipB"></select>
+        <button class="btn-primary" id="linkBtn">link</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="overlay" id="overlay">
@@ -280,6 +334,85 @@ async function removeProject(id){
 }
 
 load();
+
+// ---- tab switching ----
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'notes') loadNotes();
+  });
+});
+if (location.hash === '#notes') document.querySelector('[data-tab="notes"]').click();
+
+// ---- cli-notes device management ----
+const deviceRows = document.getElementById('deviceRows');
+const ipASel = document.getElementById('ipA');
+const ipBSel = document.getElementById('ipB');
+
+async function loadNotes(){
+  const res = await fetch('/api/notes/devices');
+  const data = await res.json();
+  renderDevices(data.devices || []);
+}
+
+function renderDevices(devices){
+  deviceRows.innerHTML = '';
+  ipASel.innerHTML = '';
+  ipBSel.innerHTML = '';
+
+  const noteIdCounts = {};
+  devices.forEach(d => { noteIdCounts[d.noteId] = (noteIdCounts[d.noteId] || 0) + 1; });
+
+  if (!devices.length){
+    deviceRows.innerHTML = '<tr><td colspan="5" class="sub">no devices have visited /notes yet</td></tr>';
+  }
+
+  devices.forEach(d => {
+    const linked = noteIdCounts[d.noteId] > 1;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHtml(d.ip)}</td>
+      <td class="mono">${escapeHtml(d.noteId)}${linked ? ' (linked)' : ''}</td>
+      <td class="mono">${new Date(d.lastSeen).toLocaleString()}</td>
+      <td class="card-desc" style="max-width:220px">${escapeHtml(d.preview)}</td>
+      <td>
+        ${linked ? `<button class="btn-danger" data-unlink="${escapeHtml(d.ip)}">unlink</button>` : ''}
+        <button class="btn-danger" data-forget="${escapeHtml(d.ip)}">forget</button>
+      </td>
+    `;
+    deviceRows.appendChild(tr);
+
+    [ipASel, ipBSel].forEach(sel => {
+      const opt = document.createElement('option');
+      opt.value = d.ip; opt.textContent = d.ip;
+      sel.appendChild(opt);
+    });
+  });
+
+  deviceRows.querySelectorAll('[data-unlink]').forEach(btn => {
+    btn.onclick = async () => {
+      await fetch('/api/notes/unlink', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ ip: btn.dataset.unlink }) });
+      loadNotes();
+    };
+  });
+  deviceRows.querySelectorAll('[data-forget]').forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm(`forget device ${btn.dataset.forget}? its note will be deleted.`)) return;
+      await fetch('/api/notes/forget', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ ip: btn.dataset.forget }) });
+      loadNotes();
+    };
+  });
+}
+
+document.getElementById('linkBtn').addEventListener('click', async () => {
+  const ipA = ipASel.value, ipB = ipBSel.value;
+  if (!ipA || !ipB || ipA === ipB) { alert('pick two distinct ips'); return; }
+  const res = await fetch('/api/notes/link', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ ipA, ipB }) });
+  if (res.ok) loadNotes(); else alert('error linking devices');
+});
 </script>
 </body>
 </html>
