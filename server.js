@@ -1,15 +1,17 @@
 const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DATA_FILE = path.join(__dirname, 'projects.json');
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
 
 // If the app is behind a reverse proxy (nginx), trust the X-Forwarded-* headers
 app.set('trust proxy', true);
 
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '10mb' }));
 
 // IP restriction for admin access
 const ALLOWED_ADMIN_IP = '162.230.12.125';
@@ -32,6 +34,34 @@ app.get('/admin.html', adminOnly, (req, res) => res.sendFile(path.join(__dirname
 
 // Serve other static assets
 app.use(express.static(path.join(__dirname)));
+app.use('/uploads', express.static(UPLOADS_DIR));
+
+const ALLOWED_IMAGE_TYPES = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'image/svg+xml': '.svg',
+};
+
+// Accepts a data URL and stores it as a file under /uploads (admin UI image uploads)
+app.post('/api/upload', adminOnly, async (req, res) => {
+  try {
+    const { data } = req.body || {};
+    const match = typeof data === 'string' && data.match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) return res.status(400).json({ error: 'expected a base64 data URL' });
+    const mime = match[1];
+    const ext = ALLOWED_IMAGE_TYPES[mime];
+    if (!ext) return res.status(400).json({ error: 'unsupported image type' });
+    const buffer = Buffer.from(match[2], 'base64');
+    await fs.mkdir(UPLOADS_DIR, { recursive: true });
+    const filename = `${crypto.randomUUID()}${ext}`;
+    await fs.writeFile(path.join(UPLOADS_DIR, filename), buffer);
+    res.json({ url: `/uploads/${filename}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.get('/api/projects', async (req, res) => {
   try {
