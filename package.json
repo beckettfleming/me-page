@@ -1,0 +1,12 @@
+{
+  "name": "personal-website-server",
+  "version": "1.0.0",
+  "description": "Static site with small admin API for projects",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

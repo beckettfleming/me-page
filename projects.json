@@ -1,0 +1,26 @@
+[
+  {
+    "id": "football-manager-sim",
+    "kind": "game",
+    "tone": "warning",
+    "desc": "football manager sim — tactics, transfers, live match engine."
+  },
+  {
+    "id": "pixel-tower-defense",
+    "kind": "game",
+    "tone": "success",
+    "desc": "small tower-defense game, canvas + web audio."
+  },
+  {
+    "id": "cli-notes",
+    "kind": "tool",
+    "tone": "neutral",
+    "desc": "terminal-styled notes tool synced to a gist."
+  },
+  {
+    "id": "uptime-pinger",
+    "kind": "tool",
+    "tone": "warning",
+    "desc": "pings side-project urls, posts to a status page."
+  }
+]
